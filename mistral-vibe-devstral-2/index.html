@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Invaders with Three.js</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            z-index: 100;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 48px;
+            z-index: 100;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0</div>
+    <div id="gameOver">Game Over</div>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script>
+        // Game state
+        let score = 0;
+        let gameOver = false;
+        let invaders = [];
+        let bullets = [];
+        let invaderBullets = [];
+        let invaderSpeed = 0.05;
+        let invaderDirection = 1;
+        let invaderMoveDown = false;
+        let lastInvaderShotTime = 0;
+        let invaderShotInterval = 1000;
+        
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        // Player
+        const playerGeometry = new THREE.BoxGeometry(1, 0.5, 1);
+        const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        player.position.y = -8;
+        scene.add(player);
+        
+        // Create invaders
+        function createInvaders() {
+            const rows = 5;
+            const cols = 10;
+            const spacing = 1.5;
+            
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const invaderGeometry = new THREE.BoxGeometry(0.8, 0.5, 0.8);
+                    const invaderMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                    const invader = new THREE.Mesh(invaderGeometry, invaderMaterial);
+                    
+                    invader.position.x = (col - cols / 2) * spacing;
+                    invader.position.y = 5 - row * spacing;
+                    invader.position.z = 0;
+                    
+                    scene.add(invader);
+                    invaders.push(invader);
+                }
+            }
+        }
+        
+        // Player movement
+        const keyboard = {};
+        document.addEventListener('keydown', (event) => {
+            keyboard[event.key] = true;
+        });
+        
+        document.addEventListener('keyup', (event) => {
+            keyboard[event.key] = false;
+        });
+        
+        // Shooting
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'Space' && !gameOver) {
+                shoot();
+            }
+        });
+        
+        function shoot() {
+            const bulletGeometry = new THREE.BoxGeometry(0.1, 0.3, 0.1);
+            const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+            
+            bullet.position.copy(player.position);
+            bullet.position.y += 0.6;
+            
+            scene.add(bullet);
+            bullets.push(bullet);
+        }
+        
+        // Invader shooting
+        function invaderShoot() {
+            if (invaders.length === 0 || gameOver) return;
+            
+            const currentTime = Date.now();
+            if (currentTime - lastInvaderShotTime < invaderShotInterval) return;
+            
+            lastInvaderShotTime = currentTime;
+            
+            const randomInvader = invaders[Math.floor(Math.random() * invaders.length)];
+            
+            const bulletGeometry = new THREE.BoxGeometry(0.1, 0.3, 0.1);
+            const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+            
+            bullet.position.copy(randomInvader.position);
+            bullet.position.y -= 0.6;
+            
+            scene.add(bullet);
+            invaderBullets.push(bullet);
+        }
+        
+        // Collision detection
+        function checkCollisions() {
+            // Player bullets vs invaders
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                
+                for (let j = invaders.length - 1; j >= 0; j--) {
+                    const invader = invaders[j];
+                    
+                    if (Math.abs(bullet.position.x - invader.position.x) < 0.5 &&
+                        Math.abs(bullet.position.y - invader.position.y) < 0.5) {
+                        
+                        scene.remove(invader);
+                        invaders.splice(j, 1);
+                        
+                        scene.remove(bullet);
+                        bullets.splice(i, 1);
+                        
+                        score += 10;
+                        document.getElementById('score').textContent = 'Score: ' + score;
+                        
+                        break;
+                    }
+                }
+            }
+            
+            // Invader bullets vs player
+            for (let i = invaderBullets.length - 1; i >= 0; i--) {
+                const bullet = invaderBullets[i];
+                
+                if (Math.abs(bullet.position.x - player.position.x) < 0.5 &&
+                    Math.abs(bullet.position.y - player.position.y) < 0.5) {
+                    
+                    scene.remove(bullet);
+                    invaderBullets.splice(i, 1);
+                    
+                    gameOver = true;
+                    document.getElementById('gameOver').style.display = 'block';
+                    
+                    break;
+                }
+            }
+            
+            // Invaders reaching bottom
+            for (const invader of invaders) {
+                if (invader.position.y < -7) {
+                    gameOver = true;
+                    document.getElementById('gameOver').style.display = 'block';
+                    break;
+                }
+            }
+        }
+        
+        // Game loop
+        function animate() {
+            if (gameOver) return;
+            
+            requestAnimationFrame(animate);
+            
+            // Player movement
+            if (keyboard['ArrowLeft'] && player.position.x > -10) {
+                player.position.x -= 0.1;
+            }
+            if (keyboard['ArrowRight'] && player.position.x < 10) {
+                player.position.x += 0.1;
+            }
+            
+            // Move bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                bullet.position.y += 0.2;
+                
+                if (bullet.position.y > 10) {
+                    scene.remove(bullet);
+                    bullets.splice(i, 1);
+                }
+            }
+            
+            // Move invader bullets
+            for (let i = invaderBullets.length - 1; i >= 0; i--) {
+                const bullet = invaderBullets[i];
+                bullet.position.y -= 0.1;
+                
+                if (bullet.position.y < -10) {
+                    scene.remove(bullet);
+                    invaderBullets.splice(i, 1);
+                }
+            }
+            
+            // Move invaders
+            let moveDown = false;
+            
+            for (const invader of invaders) {
+                invader.position.x += invaderSpeed * invaderDirection;
+                
+                // Check if any invader reached the edge
+                if (invader.position.x > 9 || invader.position.x < -9) {
+                    moveDown = true;
+                }
+            }
+            
+            if (moveDown) {
+                invaderDirection *= -1;
+                
+                for (const invader of invaders) {
+                    invader.position.y -= 0.5;
+                }
+            }
+            
+            // Invader shooting
+            invaderShoot();
+            
+            // Check collisions
+            checkCollisions();
+            
+            // Increase difficulty
+            if (invaders.length < 10) {
+                invaderSpeed = 0.1;
+                invaderShotInterval = 500;
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Start game
+        camera.position.z = 15;
+        createInvaders();
+        animate();
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
